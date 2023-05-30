@@ -28,37 +28,43 @@ void MMU_exception(MMU* mmu, int pos) {
     PageTableEntry *current ;
     // Implemento l'enhanced second chance algorithm  sia i=xy , faccio al massimo 4 cicli cercando in ordine pagine con bit_read,bit_write  00 01 10 11 
     while (1) {
-        for(int j=mmu->next;j<mmu->num_frames;j++){
-            if(mmu->frame_to_page[j].free){
+        for(uint16_t j=mmu->next;j<mmu->num_frames;j++){
+                if(mmu->frame_to_page[j].free){
                 memcpy(&(mmu->buffer[j * PAGE_SIZE]),&(mmu->swap_file[pageIndex * PAGE_SIZE]),PAGE_SIZE);
-                printf("Swapping mapped page %d to %d frame from memory\n",pageIndex,j);
+                if(verbose) printf("Swapping mapped page %d to %d frame from memory\n",pageIndex,j);
+                
                 mmu->page_table[pageIndex].frame=j;  //aggiorno indice nella page table
+                
                 mmu->page_table[pageIndex].reference_bit=1; //imposto il reference bit a 1
                 mmu->page_table[pageIndex].valid=1; // la pagina caricata è valida
-
+                
                 
                 mmu->frame_to_page[j].page=pageIndex;//aggiorno riferimento alla pagina
                 mmu->frame_to_page[j].free=0;
-
+               
                 mmu->next=(j+1) %mmu->num_frames;
+                disk_access++;
+                
                 return;
             }
-
-             current= mmu->page_table+mmu->frame_to_page[j].page;
+            current= &mmu->page_table[mmu->frame_to_page[j].page];
             if (current->unswappable) {
                     // Unswappable page error
                     printf("Error: Invalid access to unswappable page!\n");
                     exit(1);
                 }
-            ref_wr=current->reference_bit <<1 | current->write_bit;
+
             
+            ref_wr=current->reference_bit <<1 | current->write_bit;
             
             if(ref_wr<=i){ //vuol dire che ho trovato un frame da togliere
                 if(current->write_bit){ //salvo su disco pagina modificata
-                    memcpy(&(mmu->swap_file[mmu->frame_to_page[j].page]), &(mmu->buffer[j * PAGE_SIZE]), PAGE_SIZE);
-                    printf("Swapping back %d frame in memory to %d mapped page in swap file\n",j,mmu->frame_to_page[j].page);
+                    memcpy(&(mmu->swap_file[mmu->frame_to_page[j].page*PAGE_SIZE]), &(mmu->buffer[j * PAGE_SIZE]), PAGE_SIZE);
+                    if (verbose) printf("Swapping back frame %d in memory to mapped page %d in swap file\n",j,mmu->frame_to_page[j].page);
+                    disk_access++;
                 }
-                printf("Swapping mapped page %d to %d frame in memory\n",pageIndex,j);
+                
+                if (verbose) printf("Swapping mapped page %d to frame %d in memory\n",pageIndex,j);
                 memcpy(&(mmu->buffer[j * PAGE_SIZE]),&(mmu->swap_file[pageIndex * PAGE_SIZE]),PAGE_SIZE);
                 mmu->page_table[pageIndex].frame=j;  //aggiorno indice del frame
                 mmu->page_table[pageIndex].valid=1; // la pagina caricata è valida
@@ -69,13 +75,15 @@ void MMU_exception(MMU* mmu, int pos) {
                 current->write_bit=0;
                 current->read_bit=0;
                 current->reference_bit=0;
+               
                 //imposto il reference bit a 1
-                
                 mmu->page_table[pageIndex].reference_bit=1;
+                //aggiorno il puntatore al prossimo frame da controllare
                 mmu->next=(j+1) %mmu->num_frames;
+                disk_access++;
                 return;
             }
-            if(i!=-1) {  //se non sto prima cercando possibili frame liberi imposto a 0 il current reference bit
+            if(i==0x3) {  //azzero reference bit se frame non scelto
                 current->reference_bit=0;
              } 
         }
@@ -90,11 +98,11 @@ void MMU_writeByte(MMU* mmu, int pos, char c) {
     PageTableEntry* page = mmu->page_table+pageIndex;
 
     if (!page->valid) {
-        printf("Write Page Fault!\n");
+        if(verbose) printf("Write Page Fault!\n");
         MMU_exception(mmu, pos);
     }
-
     mmu->buffer[page->frame<<PAGE_NUM_BIT | offset] = c;
+    
     page->write_bit = 1;
 }
 
@@ -104,12 +112,12 @@ char* MMU_readByte(MMU* mmu, int pos) {
     PageTableEntry* page = mmu->page_table + pageIndex;
 
     if (!page->valid) {
-        printf("Read Page Fault!\n");
+        if(verbose) printf("Read Page Fault!\n");
         MMU_exception(mmu, pos);
     }
 
     page->read_bit = 1;
-    return mmu->buffer + (page->frame<<PAGE_NUM_BIT | offset);
+    return &mmu->buffer[page->frame<<PAGE_NUM_BIT | offset];
 }
 
 
