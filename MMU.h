@@ -17,14 +17,14 @@ typedef struct PageTableEntry{
     unsigned int unswappable : 1;
     unsigned int read_bit : 1;
     unsigned int write_bit : 1;
-    unsigned int reference_bit :1; // solo write bit e read bit non bastano : reference bit potresti mettere ref=read_bit | write_bit (ultimo accesso o in lettura o scrittura) ma quando scandisci e trovi 1, imposti entrambi a 0? allora quando andrò a fare swapping non mi ricordero di fare write back, se azzero solo bit_read, se avrò bit_write la pagina non verrà mai swappata
+    unsigned int reference_bit :1; // solo write bit e read bit non bastano : reference bit potresti mettere ref=read_bit | write_bit (ultimo accesso o in lettura o scrittura) ma quando scandisci e trovi 1, imposti entrambi a 0? allora quando andrò a fare swapping non mi ricordero di fare write back, se invece azzero solo bit_read, se avrò bit_write la pagina non verrà mai swappata
 } PageTableEntry;
 
 //1048576   4096*4 = 16384   
 
 typedef struct Frame{
     uint16_t page;
-    unsigned int free;
+    unsigned int free :1;
 } Frame;
 
 

@@ -31,7 +31,7 @@ int main(int  argc, char** argv){
     getchar();
 
 
-    //modo più semplice per testare se le priorità funzionano è settare direttamente i bit, il puntatore next punta al primo frame 
+    //modo più semplice per testare se le priorità funzionano è settare direttamente i bit, il puntatore next punta al primo frame nella ram
     //indici pari hanno sempre priorità minore o uguale a quelli dispari
     int l=3*mmu.num_frames*PAGE_SIZE+1; //uso l come numero della pagina nel swap file in modo da accedere ogni volta ad una pagina diversa e non fare hit
     for(unsigned char i=0;i<=0x3;i++){
