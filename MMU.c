@@ -83,7 +83,7 @@ void MMU_exception(MMU* mmu, int pos) {
                 disk_access++;
                 return;
             }
-            if(i==0x3) {  //azzero reference bit se frame non scelto
+            if(i==0x1) {  //azzero reference bit se frame non scelto
                 current->reference_bit=0;
              } 
         }
