@@ -6,9 +6,9 @@ char swap_file[SWAP_FILE_SIZE];
 char physical_memory[PHYSICAL_MEM_SIZE]; 
 long  unsigned int disk_access=0;
 unsigned char verbose=0;
+unsigned char enhanced=1;
 int main(int  argc, char** argv){
     // Initialize MMU
-    
     MMU mmu;
     char a;
     char * c ;
@@ -20,7 +20,7 @@ int main(int  argc, char** argv){
     verbose=1;
     //accesso sequenziale alle prime num_frames*2 pagine dello swap file
     for(int i=0;i<mmu.num_frames*PAGE_SIZE*2;i+=PAGE_SIZE){
-        printf("byte %c written in page %u\n",'A',i/PAGE_SIZE);
+        printf("writing byte %c in page %u\n",'A',i/PAGE_SIZE);
         MMU_writeByte(&mmu,i,'A');
         c =MMU_readByte(&mmu,i);
         printf("byte %c read in page %u\n",*c,i/PAGE_SIZE);
@@ -38,7 +38,6 @@ int main(int  argc, char** argv){
         for(unsigned char j=i;j<=0X3;j++){
             for(int k=0;k<mmu.num_frames;k++){
                 uint16_t ftp=mmu.frame_to_page[k].page;
-                //mmu.page_table[ftp].reference_bit=0;
                 if(k%2==0){
                     mmu.page_table[ftp].reference_bit=i>>1 & 0x1;
                     mmu.page_table[ftp].write_bit=i & 0x1;
@@ -48,12 +47,12 @@ int main(int  argc, char** argv){
                     mmu.page_table[ftp].write_bit=j & 0x1;
                 }
             }
-            verbose =1;
+            verbose=1;
             printf("\nAccessing 2 new pages not in memory from swap file, Even frames have ref_wr bit %b, Odd frames have ref_wr bit %b\n",i,j);
             c =MMU_readByte(&mmu,l);
             c =MMU_readByte(&mmu,l+=PAGE_SIZE);
-            verbose=0;
             l+=2*PAGE_SIZE;
+            verbose=0;
         }
     }
 
@@ -64,21 +63,22 @@ int main(int  argc, char** argv){
     reset(&mmu);
     disk_access=0;
     srand(4);
-    int acc_num=BIG_MAX_NUM_ACCESSES;
+    int acc_num=MED_MAX_NUM_ACCESSES;
     char written_string[acc_num+1];
     for(int i=0;i<acc_num;i++){
         int randomNum = rand() % SWAP_FILE_SIZE;
         *c=((char)i+'A')%('Z'-'A');
         MMU_writeByte(&mmu,randomNum,*c);
         written_string[i]=*c;
-
     }
+    
     written_string[acc_num]='\0';
-    printf("Number of disk accesses for %d writes: %lu\n",acc_num,disk_access);
+    printf("Number of disk accesses for %d writes with enhanced: %lu\n",acc_num,disk_access);
     //let's check integrity
     char read_string[acc_num+1];
     srand(4);
     for(int i=0;i<acc_num;i++){
+
         int randomNum = rand() % SWAP_FILE_SIZE;
         c =MMU_readByte(&mmu,randomNum);
         read_string[i]=*c;
@@ -86,6 +86,42 @@ int main(int  argc, char** argv){
     }
     read_string[acc_num]='\0';
     printf("Memory consistency is %b\n",!strcmp(read_string,written_string));
+
+    printf("Press Enter to continue...\n");
+    getchar();
+
+    
+    reset(&mmu);
+    acc_num=BIG_MAX_NUM_ACCESSES;
+    disk_access=0;
+    srand(4);
+    for(int i=0;i<acc_num;i++){
+        int randomNum = rand() % SWAP_FILE_SIZE;
+        *c=((char)i+'A')%('Z'-'A');
+        MMU_writeByte(&mmu,randomNum,*c);
+
+        randomNum = rand() % SWAP_FILE_SIZE;
+        MMU_readByte(&mmu,randomNum);
+    }
+    printf("Number of disk accesses for %d writes and %d reads with enhanced: %lu\n",acc_num, acc_num,disk_access);
+    
+    
+    
+    enhanced=0;  //provo il second classico
+    reset(&mmu);
+    disk_access=0;
+    srand(4);
+    for(int i=0;i<acc_num;i++){
+        int randomNum = rand() % SWAP_FILE_SIZE;
+        *c=((char)i+'A')%('Z'-'A');
+        MMU_writeByte(&mmu,randomNum,*c);
+
+        randomNum = rand() % SWAP_FILE_SIZE;
+        MMU_readByte(&mmu,randomNum);
+    }
+    printf("Number of disk accesses for %d writes and %d reads without enhanced: %lu\n",acc_num,acc_num,disk_access);
+
+
     
 
     

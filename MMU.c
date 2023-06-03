@@ -26,10 +26,11 @@ void MMU_exception(MMU* mmu, int pos) {
     char i=-1;
     unsigned char ref_wr;
     PageTableEntry *current ;
-    // Implemento l'enhanced second chance algorithm  sia i=xy , faccio al massimo 4 cicli cercando in ordine pagine con bit_read,bit_write  00 01 10 11 
+    // Implemento l'enhanced second chance algorithm, faccio al massimo 5 cicli cercando in ordine pagine con bit_read,bit_write  00 01, in quest'ultimo caso se non trovo nulla inizio a settare reference a 0 e ricomincio 
     while (1) {
-        for(uint16_t j=mmu->next;j<mmu->num_frames;j++){
-                if(mmu->frame_to_page[j].free){
+        uint16_t next=mmu->next;
+        for(uint16_t j=next; (j+1)%mmu->num_frames!=next;j=(j+1)%mmu->num_frames){ //condizione per farmi un ciclo su tutti i frame a partire da next
+            if(mmu->frame_to_page[j].free){
                 memcpy(&(mmu->buffer[j * PAGE_SIZE]),&(mmu->swap_file[pageIndex * PAGE_SIZE]),PAGE_SIZE);
                 if(verbose) printf("Swapping mapped page %d to %d frame from memory\n",pageIndex,j);
                 
@@ -52,10 +53,10 @@ void MMU_exception(MMU* mmu, int pos) {
                     // Unswappable page error
                     printf("Error: Invalid access to unswappable page!\n");
                     exit(1);
-                }
-
+            }
             
-            ref_wr=current->reference_bit <<1 | current->write_bit;
+            if (enhanced) ref_wr=current->reference_bit <<1 | current->write_bit;
+            else ref_wr=current->reference_bit;
             
             if(ref_wr<=i){ //vuol dire che ho trovato un frame da togliere
                 if(current->write_bit){ //salvo su disco pagina modificata
@@ -83,11 +84,10 @@ void MMU_exception(MMU* mmu, int pos) {
                 disk_access++;
                 return;
             }
-            if(i==0x1) {  //azzero reference bit se frame non scelto
-                current->reference_bit=0;
-             } 
+            if((enhanced && i==0x1) || (!enhanced && i==0x0)) current->reference_bit=0; //azzero reference bit se mi trovo a priorità 01 e non ho trovato nulla 
         }
-        i++;
+        if(enhanced) i=(i+1)%0x2;
+        else i=0;
     }
 }
 
