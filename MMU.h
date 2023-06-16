@@ -7,7 +7,7 @@
 #define PHYSICAL_MEM_SIZE (1<< MEM_NUM_BIT)
 #define VIRTUAL_MEM_SIZE (1<< VIRTUAL_NUM_BIT)
 #define SWAP_FILE_SIZE (1<<VIRTUAL_NUM_BIT)
-#define BIG_MAX_NUM_ACCESSES 1000000
+#define BIG_MAX_NUM_ACCESSES 5000
 #define MED_MAX_NUM_ACCESSES 1000
 #define SMOL_MAX_NUM_ACCESSES 10
 
@@ -17,7 +17,7 @@ typedef struct PageTableEntry{
     unsigned int unswappable : 1;
     unsigned int read_bit : 1;
     unsigned int write_bit : 1;
-    unsigned int reference_bit :1; // solo write bit e read bit non bastano : reference bit potresti mettere ref=read_bit | write_bit (ultimo accesso o in lettura o scrittura) ma quando scandisci e trovi 1, imposti entrambi a 0? allora quando andrò a fare swapping non mi ricordero di fare write back, se invece azzero solo bit_read, se avrò bit_write la pagina non verrà mai swappata
+    unsigned int reference_bit :1; 
 } PageTableEntry; 
 
 typedef struct Frame{
@@ -30,16 +30,16 @@ typedef struct MMU{
     PageTableEntry * page_table;
     Frame * frame_to_page;
     unsigned int num_frames;
-    char * swap_file;
+    int fd_swap_file;
     char * buffer;
     uint16_t next;
 } MMU;
 
-extern long unsigned int disk_access;
+extern long unsigned int num_disk_accesses;
 extern unsigned char verbose;
 extern unsigned char enhanced;
 
-void MMU_init(MMU* mmu,char *phy,char * swap);
+void MMU_init(MMU* mmu,char *phy,int swap);
 void MMU_exception(MMU* mmu, int pos);
 void MMU_writeByte(MMU* mmu, int pos, char c);
 char* MMU_readByte(MMU* mmu, int pos);

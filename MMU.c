@@ -5,15 +5,16 @@
 #include <string.h>
 #include <assert.h>
 #include <unistd.h>
+#include <fcntl.h>
 
-void MMU_init(MMU* mmu,char * physical_memory,char * swap_file){
+void MMU_init(MMU* mmu,char * physical_memory,int fd_swap_file){
     memset(mmu,0,sizeof(MMU));
-    mmu->swap_file=swap_file;
+    mmu->fd_swap_file=fd_swap_file;
     mmu->page_table=(PageTableEntry *)physical_memory;
     int page_table_size=sizeof(PageTableEntry)*VIRTUAL_MEM_SIZE/PAGE_SIZE; 
     mmu->frame_to_page=(Frame *) (physical_memory+page_table_size);
     int left_memory=PHYSICAL_MEM_SIZE-page_table_size;
-    //imposto equazione dove x è il numero di frame sizeof(Frame)*x+x*PAGE_SIZE=LEFT_MEMORY      x=left_memory/(PAGE_SIZE + sizeof(uint16))
+    //x è il numero di frame       x=left_memory/(PAGE_SIZE + sizeof(Frame))
     mmu->num_frames=left_memory/(PAGE_SIZE + sizeof(Frame));
     for(int i=0;i<mmu->num_frames;i++){
         mmu->frame_to_page[i].free=1;
@@ -23,6 +24,7 @@ void MMU_init(MMU* mmu,char * physical_memory,char * swap_file){
 }   
 void MMU_exception(MMU* mmu, int pos) {
     int pageIndex = pos / PAGE_SIZE; //inizio a controllare dalla pagina 
+    off_t off = lseek(mmu->fd_swap_file, pageIndex*PAGE_SIZE, SEEK_SET);
     char i=-1;
     unsigned char ref_wr;
     PageTableEntry *current ;
@@ -31,11 +33,11 @@ void MMU_exception(MMU* mmu, int pos) {
         uint16_t next=mmu->next;
         for(uint16_t j=next; (j+1)%mmu->num_frames!=next;j=(j+1)%mmu->num_frames){ //condizione per farmi un ciclo su tutti i frame a partire da next
             if(mmu->frame_to_page[j].free){
-                memcpy(&(mmu->buffer[j * PAGE_SIZE]),&(mmu->swap_file[pageIndex * PAGE_SIZE]),PAGE_SIZE);
+                //memcpy(&(mmu->buffer[j * PAGE_SIZE]),&(mmu->swap_file[pageIndex * PAGE_SIZE]),PAGE_SIZE);
+                read(mmu->fd_swap_file,&(mmu->buffer[j * PAGE_SIZE]),PAGE_SIZE);
                 if(verbose) printf("Swapping mapped page %d to %d frame from memory\n",pageIndex,j);
                 
                 mmu->page_table[pageIndex].frame=j;  //aggiorno indice nella page table
-                
                 mmu->page_table[pageIndex].reference_bit=1; //imposto il reference bit a 1
                 mmu->page_table[pageIndex].valid=1; // la pagina caricata è valida
                 
@@ -44,7 +46,7 @@ void MMU_exception(MMU* mmu, int pos) {
                 mmu->frame_to_page[j].free=0;
                
                 mmu->next=(j+1) %mmu->num_frames;
-                disk_access++;
+                num_disk_accesses++;
                 
                 return;
             }
@@ -60,13 +62,17 @@ void MMU_exception(MMU* mmu, int pos) {
             
             if(ref_wr<=i){ //vuol dire che ho trovato un frame da togliere
                 if(current->write_bit){ //salvo su disco pagina modificata
-                    memcpy(&(mmu->swap_file[mmu->frame_to_page[j].page*PAGE_SIZE]), &(mmu->buffer[j * PAGE_SIZE]), PAGE_SIZE);
+                    off= lseek(mmu->fd_swap_file, mmu->frame_to_page[j].page*PAGE_SIZE, SEEK_SET);
+                    write(mmu->fd_swap_file,&(mmu->buffer[j * PAGE_SIZE]),PAGE_SIZE);
                     if (verbose) printf("Swapping back frame %d in memory to mapped page %d in swap file\n",j,mmu->frame_to_page[j].page);
-                    disk_access++;
+                    num_disk_accesses++;
                 }
                 
                 if (verbose) printf("Swapping mapped page %d to frame %d in memory\n",pageIndex,j);
-                memcpy(&(mmu->buffer[j * PAGE_SIZE]),&(mmu->swap_file[pageIndex * PAGE_SIZE]),PAGE_SIZE);
+                
+                off = lseek(mmu->fd_swap_file, pageIndex*PAGE_SIZE, SEEK_SET);
+                read(mmu->fd_swap_file,&(mmu->buffer[j * PAGE_SIZE]),PAGE_SIZE);
+
                 mmu->page_table[pageIndex].frame=j;  //aggiorno indice del frame
                 mmu->page_table[pageIndex].valid=1; // la pagina caricata è valida
                 mmu->page_table[pageIndex].reference_bit=1;
@@ -81,7 +87,7 @@ void MMU_exception(MMU* mmu, int pos) {
                 mmu->page_table[pageIndex].reference_bit=1;
                 //aggiorno il puntatore al prossimo frame da controllare
                 mmu->next=(j+1) %mmu->num_frames;
-                disk_access++;
+                num_disk_accesses++;
                 return;
             }
             if((enhanced && i==0x1) || (!enhanced && i==0x0)) current->reference_bit=0; //azzero reference bit se mi trovo a priorità 01 e non ho trovato nulla 

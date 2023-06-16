@@ -1,10 +1,14 @@
-#include "MMU.h"
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include "MMU.h"
 #include <string.h>
+#include <assert.h>
+#include <unistd.h>
+#include <fcntl.h>
 
-char swap_file[SWAP_FILE_SIZE];
 char physical_memory[PHYSICAL_MEM_SIZE]; 
-long  unsigned int disk_access=0;
+long  unsigned int num_disk_accesses=0;
 unsigned char verbose=0;
 unsigned char enhanced=1;
 int main(int  argc, char** argv){
@@ -12,8 +16,12 @@ int main(int  argc, char** argv){
     MMU mmu;
     char a;
     char * c ;
+    char e;
     c=&a;
-    MMU_init(&mmu,physical_memory,swap_file);
+    int fd = open("miofile.txt", O_CREAT | O_RDWR | O_TRUNC, 0666);
+    assert(fd!=-1 && "open swap file");
+
+    MMU_init(&mmu,physical_memory,fd);
      
 
     
@@ -50,7 +58,7 @@ int main(int  argc, char** argv){
             verbose=1;
             printf("\nAccessing 2 new pages not in memory from swap file, Even frames have ref_wr bit %b, Odd frames have ref_wr bit %b\n",i,j);
             c =MMU_readByte(&mmu,l);
-            c =MMU_readByte(&mmu,l+=PAGE_SIZE);
+            c =MMU_readByte(&mmu,l+PAGE_SIZE);
             l+=2*PAGE_SIZE;
             verbose=0;
         }
@@ -59,32 +67,33 @@ int main(int  argc, char** argv){
     printf("Press Enter to continue...\n");
     getchar();
     
-    verbose=0;
+    //Testing memory consistency with swapped pages
     reset(&mmu);
-    disk_access=0;
+    num_disk_accesses=0;
     srand(4);
     int acc_num=MED_MAX_NUM_ACCESSES;
     char written_string[acc_num+1];
     for(int i=0;i<acc_num;i++){
-        int randomNum = rand() % SWAP_FILE_SIZE;
-        *c=((char)i+'A')%('Z'-'A');
-        MMU_writeByte(&mmu,randomNum,*c);
-        written_string[i]=*c;
+        e = (char)('A' + (rand() % ('Z' - 'A')));
+        if(i<acc_num/2) MMU_writeByte(&mmu,i*PAGE_SIZE%SWAP_FILE_SIZE,e);
+        else MMU_writeByte(&mmu,((i-acc_num/2)*PAGE_SIZE +2)%SWAP_FILE_SIZE,e);
+        written_string[i]=e;
     }
     
+    
     written_string[acc_num]='\0';
-    printf("Number of disk accesses for %d writes with enhanced: %lu\n",acc_num,disk_access);
     //let's check integrity
+    verbose=0;
     char read_string[acc_num+1];
-    srand(4);
     for(int i=0;i<acc_num;i++){
-
-        int randomNum = rand() % SWAP_FILE_SIZE;
-        c =MMU_readByte(&mmu,randomNum);
+        if(i<acc_num/2) c =MMU_readByte(&mmu,i*PAGE_SIZE%SWAP_FILE_SIZE);
+        else c =MMU_readByte(&mmu,((i-acc_num/2)*PAGE_SIZE+2)%SWAP_FILE_SIZE);
         read_string[i]=*c;
         
     }
     read_string[acc_num]='\0';
+    
+   
     printf("Memory consistency is %b\n",!strcmp(read_string,written_string));
 
     printf("Press Enter to continue...\n");
@@ -93,7 +102,7 @@ int main(int  argc, char** argv){
     
     reset(&mmu);
     acc_num=BIG_MAX_NUM_ACCESSES;
-    disk_access=0;
+    num_disk_accesses=0;
     srand(4);
     for(int i=0;i<acc_num;i++){
         int randomNum = rand() % SWAP_FILE_SIZE;
@@ -103,13 +112,12 @@ int main(int  argc, char** argv){
         randomNum = rand() % SWAP_FILE_SIZE;
         MMU_readByte(&mmu,randomNum);
     }
-    printf("Number of disk accesses for %d writes and %d reads with enhanced: %lu\n",acc_num, acc_num,disk_access);
-    
+    printf("Number of disk accesses for %d writes and %d reads with enhanced: %lu\n",acc_num,acc_num,num_disk_accesses);
     
     
     enhanced=0;  //provo il second classico
     reset(&mmu);
-    disk_access=0;
+    num_disk_accesses=0;
     srand(4);
     for(int i=0;i<acc_num;i++){
         int randomNum = rand() % SWAP_FILE_SIZE;
@@ -119,24 +127,21 @@ int main(int  argc, char** argv){
         randomNum = rand() % SWAP_FILE_SIZE;
         MMU_readByte(&mmu,randomNum);
     }
-    printf("Number of disk accesses for %d writes and %d reads without enhanced: %lu\n",acc_num,acc_num,disk_access);
+    printf("Number of disk accesses for %d writes and %d reads without enhanced: %lu\n",acc_num,acc_num,num_disk_accesses);
 
-
-    
-
-    
-
-    
-
-    
-    
-   
+    int ret=close(fd);
+    assert(ret!=-1 && "close");
 
     return 0;
 }
 
 void reset(MMU * mmu){
     memset(physical_memory,0,sizeof(physical_memory));
-    memset(swap_file,0,sizeof(swap_file));
-    MMU_init(mmu,physical_memory,swap_file);
+    int ret=close(mmu->fd_swap_file);
+    assert(ret!=-1 && "close");
+
+    int fd = open("miofile.txt", O_CREAT | O_RDWR | O_TRUNC, 0666);
+    assert(fd!=-1 && "open swap file");
+
+    MMU_init(mmu,physical_memory,fd);
 }
